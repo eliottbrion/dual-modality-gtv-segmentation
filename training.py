@@ -45,6 +45,8 @@ def train(partition, previous_dir, gpu, dest_dir, fold_name, params):
             model = unet_3d(params)
         if params['model']=='unet_3d_pad':
             model = unet_3d_pad(params)
+        elif params['model']=='unet_3d_smooth':
+            model = unet_3d_smooth(params)
         hist1 = None  # no history from previous model
     else:
         params_previous = pickle.load(open(previous_dir + '/params.p', "rb"))
@@ -54,6 +56,7 @@ def train(partition, previous_dir, gpu, dest_dir, fold_name, params):
         model = load_model(previous_dir + '/weights.h5', custom_objects=co)
 
     # Train
+    print('params', params)
     training_generator = DataGeneratorTrain(partition['train'], params['modality'], params)
     validation_generator = DataGeneratorVal(partition['val'], params['modality'], params)
 

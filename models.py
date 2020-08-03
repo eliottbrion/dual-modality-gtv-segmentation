@@ -31,7 +31,67 @@ def dice_loss(y_true, y_pred):
     dices =  tf.math.divide(2 * intersection, card_y_true + card_y_pred)
     return -tf.reduce_mean(dices)
 
+def dice_loss_smooth(y_true, y_pred):
+    sh = tf.shape(y_true)
+    y_true_f = tf.transpose(tf.reshape(y_true, [sh[0], sh[1] * sh[2] * sh[3]]))
+    y_pred_f = tf.transpose(tf.reshape(y_pred, [sh[0], sh[1] * sh[2] * sh[3]]))
+    intersection = tf.multiply(y_true_f, y_pred_f)
+    intersection = tf.reduce_sum(intersection, 0)
+    card_y_true = tf.reduce_sum(y_true_f, 0)
+    card_y_pred = tf.reduce_sum(y_pred_f, 0)
+    dices =  tf.math.divide(2 * intersection+1, card_y_true + card_y_pred+1)
+    return -tf.reduce_mean(dices)
+
 def unet_3d(params):
+    nb_layers = len(params['feat_maps'])
+
+    if params['modality'] in ['pet', 'ct']:
+        n_input_channels = 1
+    elif params['modality']=='dual':
+        n_input_channels = 2
+    else:
+        print('ERROR: Unknown modality.')
+
+    # Input layer
+    inputs = Input(batch_shape=(None, *image_size, n_input_channels))
+
+    # Encoding part
+    skips = []
+    x = inputs
+    for block_num in range(nb_layers-1):
+        nb_features = params['feat_maps'][block_num]
+        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
+        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
+        skips.append(x)
+        x = MaxPooling3D(pool_size=(2, 2, 2))(x)
+
+    # Bottleneck
+    nb_features = params['feat_maps'][-1]
+    x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
+    x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
+
+    # Decoding part
+    for block_num in reversed(range(nb_layers-1)):
+        nb_features = params['feat_maps'][block_num]
+        x = concatenate([Conv3DTranspose(nb_features, (2, 2, 2), strides=(2, 2, 2), padding='same')(x),
+                         skips[block_num]], axis=4)
+        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
+        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
+
+    # Output layer
+    outputs = Conv3D(1, (1, 1, 1), activation='sigmoid')(x)
+
+    print('outputs.shape.dims', outputs.shape.dims)
+
+    model = Model(inputs=[inputs], outputs=[outputs])
+
+    if params['loss']=='dice_loss':
+        model.compile(optimizer=Adam(params['lr']), loss=dice_loss)
+    elif params['loss']=='dice_loss_smooth':
+        model.compile(optimizer=Adam(params['lr']), loss=dice_loss_smooth)
+    return model
+
+def unet_3d_smooth(params):
     nb_layers = len(params['feat_maps'])
 
     # Input layer
@@ -67,7 +127,7 @@ def unet_3d(params):
 
     model = Model(inputs=[inputs], outputs=[outputs])
 
-    model.compile(optimizer=Adam(params['lr']), loss=dice_loss)
+    model.compile(optimizer=Adam(params['lr']), loss=dice_loss_smooth)
     return model
 
 def unet_3d_pad(params):
@@ -133,7 +193,7 @@ def unet_3d_pad(params):
 
     model = Model(inputs=[inputs], outputs=[outputs])
 
-    model.compile(optimizer=Adam(params['lr']), loss=dice_loss)
+    model.compile(optimizer=Adam(params['lr']), loss=dice_loss_smooth)
     return model
 
 
