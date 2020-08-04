@@ -91,45 +91,6 @@ def unet_3d(params):
         model.compile(optimizer=Adam(params['lr']), loss=dice_loss_smooth)
     return model
 
-def unet_3d_smooth(params):
-    nb_layers = len(params['feat_maps'])
-
-    # Input layer
-    inputs = Input(batch_shape=(None, *image_size, 2))
-
-    # Encoding part
-    skips = []
-    x = inputs
-    for block_num in range(nb_layers-1):
-        nb_features = params['feat_maps'][block_num]
-        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
-        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
-        skips.append(x)
-        x = MaxPooling3D(pool_size=(2, 2, 2))(x)
-
-    # Bottleneck
-    nb_features = params['feat_maps'][-1]
-    x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
-    x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
-
-    # Decoding part
-    for block_num in reversed(range(nb_layers-1)):
-        nb_features = params['feat_maps'][block_num]
-        x = concatenate([Conv3DTranspose(nb_features, (2, 2, 2), strides=(2, 2, 2), padding='same')(x),
-                         skips[block_num]], axis=4)
-        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
-        x = Conv3D(nb_features, (3, 3, 3), activation='relu', padding='same')(x)
-
-    # Output layer
-    outputs = Conv3D(1, (1, 1, 1), activation='sigmoid')(x)
-
-    print('outputs.shape.dims', outputs.shape.dims)
-
-    model = Model(inputs=[inputs], outputs=[outputs])
-
-    model.compile(optimizer=Adam(params['lr']), loss=dice_loss_smooth)
-    return model
-
 def unet_3d_pad(params):
     inputs = Input(batch_shape=(None, *image_size, 1))
 
